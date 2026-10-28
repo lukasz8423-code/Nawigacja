@@ -438,15 +438,18 @@
     let map, userMarker, routePolyline, destMarker;
     let userPos = [52.8258, 19.1678]; 
     let activeRouteSteps = [];
+    let currentStepIndex = 0;
     let isNavigating = false;
     let searchTimeout = null;
 
     function initMap() {
       map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userPos, 15);
 
-      L.tileLayer('https://tiles.openfreemap.org/styles/bright/{z}/{x}/{y}.png', {
+      // Naprawione kafelki CartoDB Voyager bez wadliwego parametru {r}
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; OpenFreeMap &copy; OpenStreetMap'
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd'
       }).addTo(map);
 
       setTimeout(() => { map.invalidateSize(); }, 200);
@@ -474,7 +477,10 @@
               document.getElementById('speed-val').innerText = Math.round(pos.coords.speed * 3.6);
             }
 
-            if (isNavigating) map.setView(userPos);
+            if (isNavigating) {
+              map.setView(userPos, 17);
+              updateNavigationProgress();
+            }
           },
           (err) => console.log(err),
           { enableHighAccuracy: true }
@@ -495,7 +501,6 @@
       }
 
       searchTimeout = setTimeout(() => {
-        // Dodano parametry widoku i lokalizacji, aby wyniki były bliżej użytkownika
         const viewbox = `${userPos[1]-1},${userPos[0]+1},${userPos[1]+1},${userPos[0]-1}`;
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=8&countrycodes=pl&lat=${userPos[0]}&lon=${userPos[1]}&viewbox=${viewbox}&bounded=0`;
 
@@ -508,7 +513,6 @@
               return;
             }
 
-            // Sortowanie wyników według odległości od aktualnej pozycji użytkownika
             data.sort((a, b) => {
               const distA = Math.hypot(parseFloat(a.lat) - userPos[0], parseFloat(a.lon) - userPos[1]);
               const distB = Math.hypot(parseFloat(b.lat) - userPos[0], parseFloat(b.lon) - userPos[1]);
@@ -567,6 +571,7 @@
           const route = data.routes[0];
           drawRoute(route.geometry.coordinates);
           activeRouteSteps = route.legs[0].steps;
+          currentStepIndex = 0;
           startNavigation(route);
         }
       } catch (err) {
@@ -621,19 +626,36 @@
       document.getElementById('eta-duration').innerText = `${mins} min`;
       document.getElementById('eta-dist').innerText = `${km} km do celu`;
 
-      if (activeRouteSteps.length > 0) {
-        const step = activeRouteSteps[0];
+      updateStepDisplay();
+      renderStepsList();
+      map.setView(userPos, 17);
+    }
+
+    function updateStepDisplay() {
+      if (activeRouteSteps.length > 0 && currentStepIndex < activeRouteSteps.length) {
+        const step = activeRouteSteps[currentStepIndex];
         const instr = step.maneuver.instruction || "Jedź prosto";
         document.getElementById('maneuver-dist').innerText = `${Math.round(step.distance)} m`;
         document.getElementById('maneuver-text').innerText = instr;
         document.getElementById('maneuver-icon').innerText = getManeuverSymbol(instr, step.maneuver.modifier, step.maneuver.type);
       }
+    }
 
-      renderStepsList();
+    function updateNavigationProgress() {
+      if (!activeRouteSteps.length || currentStepIndex >= activeRouteSteps.length) return;
+      const step = activeRouteSteps[currentStepIndex];
+      const stepLoc = step.location; 
+      const dist = Math.hypot(userPos[0] - stepLoc[1], userPos[1] - stepLoc[0]) * 111000; 
+
+      if (dist < 20 && currentStepIndex < activeRouteSteps.length - 1) {
+        currentStepIndex++;
+        updateStepDisplay();
+      }
     }
 
     function stopNavigation() {
       isNavigating = false;
+      currentStepIndex = 0;
       if (routePolyline) map.removeLayer(routePolyline);
       if (destMarker) map.removeLayer(destMarker);
 
@@ -663,7 +685,7 @@
 
     document.getElementById('btn-zoom-in').onclick = () => map.zoomIn();
     document.getElementById('btn-zoom-out').onclick = () => map.zoomOut();
-    document.getElementById('btn-recenter').onclick = () => map.setView(userPos, 16);
+    document.getElementById('btn-recenter').onclick = () => map.setView(userPos, 17);
     document.getElementById('btn-stop').onclick = stopNavigation;
 
     document.getElementById('btn-toggle-steps').onclick = () => {
