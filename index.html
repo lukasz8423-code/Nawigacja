@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AuraNavi - Darmowa Nawigacja</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* MAPA PEŁNOEKRANOWA */
+    #map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: #f1f5f9;
+    }
+
+    /* GÓRNA KARTA MANEWROWA */
+    #top-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 70px;
+      z-index: 10;
+      max-width: 400px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      color: #f8fafc;
+    }
+
+    .maneuver-icon {
+      width: 44px;
+      height: 44px;
+      background: #10b981;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: bold;
+      color: #0f172a;
+      flex-shrink: 0;
+    }
+
+    .maneuver-info {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .maneuver-dist {
+      font-size: 20px;
+      font-weight: 800;
+      color: #38bdf8;
+      line-height: 1.1;
+    }
+
+    .maneuver-text {
+      font-size: 13px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    /* PRAWY BOK - PRZYCISKI KONTROLI */
+    #controls-stack {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .btn-icon:active {
+      transform: scale(0.95);
+      background: #1e293b;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      border-color: #f87171;
+      color: white;
+    }
+
+    /* PRĘDKOŚCIOMIERZ I LIMIT (LEWY DÓŁ) */
+    #speed-container {
+      position: absolute;
+      bottom: 105px;
+      left: 16px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .speed-badge {
+      width: 56px;
+      height: 56px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      border: 2px solid #38bdf8;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      color: #ffffff;
+    }
+
+    .speed-val {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .speed-unit {
+      font-size: 9px;
+      color: #94a3b8;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .speed-limit {
+      width: 44px;
+      height: 44px;
+      background: #ffffff;
+      border: 4px solid #ef4444;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 900;
+      color: #1e293b;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+    /* DOLNY PANEL NAVI / ETA */
+    #bottom-panel {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      padding: 16px 20px 20px 20px;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+      color: #f8fafc;
+    }
+
+    .eta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .eta-main {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .eta-time-group {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .eta-time {
+      font-size: 26px;
+      font-weight: 800;
+      color: #10b981;
+    }
+
+    .eta-duration {
+      font-size: 15px;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    .eta-dist {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 2px;
+      font-weight: 500;
+    }
+
+    .status-toast {
+      position: absolute;
+      top: -36px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      color: #38bdf8;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+    }
+
+    #steps-list {
+      display: none;
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div id="map"></div>
+
+    <!-- GÓRNY PASEK MANEWROWY -->
+    <div id="top-bar" class="hidden">
+      <div class="maneuver-icon" id="maneuver-icon">↑</div>
+      <div class="maneuver-info">
+        <div class="maneuver-dist" id="maneuver-dist">0 m</div>
+        <div class="maneuver-text" id="maneuver-text">Jedź prosto</div>
+      </div>
+    </div>
+
+    <!-- PRAWY BOK KONTROLKI -->
+    <div id="controls-stack">
+      <button class="btn-icon" id="btn-zoom-in">+</button>
+      <button class="btn-icon" id="btn-zoom-out">−</button>
+      <button class="btn-icon" id="btn-recenter" title="Centruj">🎯</button>
+      <button class="btn-icon btn-danger hidden" id="btn-stop" title="Zakończ">✖</button>
+    </div>
+
+    <!-- LEWY DÓŁ SZYBKOŚĆ -->
+    <div id="speed-container">
+      <div class="speed-badge">
+        <span class="speed-val" id="speed-val">0</span>
+        <span class="speed-unit">km/h</span>
+      </div>
+      <div class="speed-limit" id="speed-limit">50</div>
+    </div>
+
+    <!-- DÓŁ PANEL ETA -->
+    <div id="bottom-panel">
+      <div class="status-toast" id="status-toast">
+        <span class="status-dot"></span>
+        <span id="status-text">Tryb wolnej jazdy — kliknij mapę</span>
+      </div>
+
+      <div class="eta-row">
+        <div class="eta-main">
+          <div class="eta-time-group">
+            <span class="eta-time" id="eta-time">--:--</span>
+            <span class="eta-duration" id="eta-duration">-- min</span>
+          </div>
+          <div class="eta-dist" id="eta-dist">Wyznacz trasę kliknięciem</div>
+        </div>
+        
+        <button class="btn-icon hidden" id="btn-toggle-steps">📋</button>
+      </div>
+
+      <div id="steps-list"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    let map, userMarker, routePolyline;
+    let userPos = [52.8258, 19.1678]; 
+    let destination = null;
+    let activeRouteSteps = [];
+    let isNavigating = false;
+
+    function initMap() {
+      map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userPos, 15);
+
+      // OpenFreeMap - jasny, standardowy styl (bright)
+      L.tileLayer('https://tiles.openfreemap.org/styles/bright/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenFreeMap &copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const userIcon = L.divIcon({
+        className: 'custom-user-icon',
+        html: `<div style="width:18px;height:18px;background:#0284c7;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px #0284c7;"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      });
+
+      userMarker = L.marker(userPos, { icon: userIcon }).addTo(map);
+
+      map.on('click', (e) => {
+        setDestination(e.latlng.lat, e.latlng.lng);
+      });
+
+      if ("geolocation" in navigator) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            userPos = [pos.coords.latitude, pos.coords.longitude];
+            userMarker.setLatLng(userPos);
+            
+            if (pos.coords.speed !== null && pos.coords.speed !== undefined) {
+              document.getElementById('speed-val').innerText = Math.round(pos.coords.speed * 3.6);
+            }
+
+            if (isNavigating) map.setView(userPos);
+          },
+          (err) => console.log(err),
+          { enableHighAccuracy: true }
+        );
+      }
+    }
+
+    async function setDestination(lat, lng) {
+      destination = [lat, lng];
+      document.getElementById('status-text').innerText = "Przeliczam trasę (OSRM)...";
+      
+      const url = `https://router.project-osrm.org/route/v1/driving/${userPos[1]},${userPos[0]};${lng},${lat}?overview=full&geometries=geojson&steps=true`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          drawRoute(route.geometry.coordinates);
+          activeRouteSteps = route.legs[0].steps;
+          startNavigation(route);
+        }
+      } catch (err) {
+        document.getElementById('status-text').innerText = "Błąd wyznaczania trasy";
+      }
+    }
+
+    function drawRoute(coordinates) {
+      if (routePolyline) map.removeLayer(routePolyline);
+      const latLngs = coordinates.map(c => [c[1], c[0]]);
+      
+      routePolyline = L.polyline(latLngs, {
+        color: '#0284c7',
+        weight: 6,
+        opacity: 0.9
+      }).addTo(map);
+
+      map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+    }
+
+    function getManeuverSymbol(modifier, type) {
+      if (!modifier) return '↑';
+      if (modifier.includes('right')) return '↪';
+      if (modifier.includes('left')) return '↩';
+      if (modifier.includes('straight')) return '↑';
+      if (modifier.includes('slight right')) return '↗';
+      if (modifier.includes('slight left')) return '↖';
+      if (modifier.includes('sharp right')) return '↻';
+      if (modifier.includes('sharp left')) return '↺';
+      if (type === 'arrive') return '🏁';
+      return '↑';
+    }
+
+    function startNavigation(route) {
+      isNavigating = true;
+      document.getElementById('top-bar').classList.remove('hidden');
+      document.getElementById('btn-stop').classList.remove('hidden');
+      document.getElementById('btn-toggle-steps').classList.remove('hidden');
+      document.getElementById('status-text').innerText = "Nawigacja aktywna";
+
+      const mins = Math.ceil(route.duration / 60);
+      const km = (route.distance / 1000).toFixed(1);
+
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + mins);
+      
+      document.getElementById('eta-time').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('eta-duration').innerText = `${mins} min`;
+      document.getElementById('eta-dist').innerText = `${km} km do celu`;
+
+      if (activeRouteSteps.length > 0) {
+        const step = activeRouteSteps[0];
+        document.getElementById('maneuver-dist').innerText = `${Math.round(step.distance)} m`;
+        document.getElementById('maneuver-text').innerText = step.maneuver.instruction || "Jedź prosto";
+        document.getElementById('maneuver-icon').innerText = getManeuverSymbol(step.maneuver.modifier, step.maneuver.type);
+      }
+
+      renderStepsList();
+    }
+
+    function stopNavigation() {
+      isNavigating = false;
+      if (routePolyline) map.removeLayer(routePolyline);
+
+      document.getElementById('top-bar').classList.add('hidden');
+      document.getElementById('btn-stop').classList.add('hidden');
+      document.getElementById('btn-toggle-steps').classList.add('hidden');
+      document.getElementById('steps-list').style.display = 'none';
+
+      document.getElementById('status-text').innerText = "Tryb wolnej jazdy — kliknij mapę";
+      document.getElementById('eta-time').innerText = "--:--";
+      document.getElementById('eta-duration').innerText = "-- min";
+      document.getElementById('eta-dist').innerText = "Wyznacz trasę kliknięciem";
+
+      map.setView(userPos, 15);
+    }
+
+    function renderStepsList() {
+      const container = document.getElementById('steps-list');
+      container.innerHTML = activeRouteSteps.map(step => `
+        <div class="step-item">
+          <span>${step.maneuver.instruction || "Kontynuuj jazdę"}</span>
+          <span>${Math.round(step.distance)} m</span>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('btn-zoom-in').onclick = () => map.zoomIn();
+    document.getElementById('btn-zoom-out').onclick = () => map.zoomOut();
+    document.getElementById('btn-recenter').onclick = () => map.setView(userPos, 16);
+    document.getElementById('btn-stop').onclick = stopNavigation;
+
+    document.getElementById('btn-toggle-steps').onclick = () => {
+      const list = document.getElementById('steps-list');
+      list.style.display = (list.style.display === 'block') ? 'none' : 'block';
+    };
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
