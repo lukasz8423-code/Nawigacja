@@ -41,10 +41,87 @@
       z-index: 1;
     }
 
+    /* PASEK WYSZUKIWANIA */
+    #search-box {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 70px;
+      z-index: 11;
+      max-width: 400px;
+    }
+
+    .search-input-wrapper {
+      display: flex;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 6px 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    #search-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f8fafc;
+      font-size: 15px;
+      padding: 8px;
+      user-select: auto;
+    }
+
+    #search-input::placeholder {
+      color: #94a3b8;
+    }
+
+    .search-btn {
+      background: transparent;
+      border: none;
+      color: #38bdf8;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    /* PODPOWIEDZI WYSZUKIWARKI */
+    #search-results {
+      position: absolute;
+      top: 54px;
+      left: 0;
+      right: 0;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      max-height: 220px;
+      overflow-y: auto;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      display: none;
+    }
+
+    .search-item {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .search-item:hover, .search-item:active {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+    }
+
     /* GÓRNA KARTA MANEWROWA */
     #top-bar {
       position: absolute;
-      top: 12px;
+      top: 70px;
       left: 12px;
       right: 70px;
       z-index: 10;
@@ -297,7 +374,16 @@
   <div id="app">
     <div id="map"></div>
 
-    <!-- GÓRNY PASEK MANEWROWY -->
+    <!-- PASEK WYSZUKIWANIA -->
+    <div id="search-box">
+      <div class="search-input-wrapper">
+        <input type="text" id="search-input" placeholder="Wpisz dokąd chcesz jechać..." autocomplete="off" />
+        <button class="search-btn" id="search-btn">🔍</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+    <!-- GÓRNY PASEK MANEWROWA -->
     <div id="top-bar" class="hidden">
       <div class="maneuver-icon" id="maneuver-icon">↑</div>
       <div class="maneuver-info">
@@ -327,7 +413,7 @@
     <div id="bottom-panel">
       <div class="status-toast" id="status-toast">
         <span class="status-dot"></span>
-        <span id="status-text">Tryb wolnej jazdy — kliknij mapę</span>
+        <span id="status-text">Wpisz cel lub kliknij mapę</span>
       </div>
 
       <div class="eta-row">
@@ -336,7 +422,7 @@
             <span class="eta-time" id="eta-time">--:--</span>
             <span class="eta-duration" id="eta-duration">-- min</span>
           </div>
-          <div class="eta-dist" id="eta-dist">Wyznacz trasę kliknięciem</div>
+          <div class="eta-dist" id="eta-dist">Wyznacz trasę wpisując cel</div>
         </div>
         
         <button class="btn-icon hidden" id="btn-toggle-steps">📋</button>
@@ -349,30 +435,21 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    let map, userMarker, routePolyline;
+    let map, userMarker, routePolyline, destMarker;
     let userPos = [52.8258, 19.1678]; 
-    let destination = null;
     let activeRouteSteps = [];
     let isNavigating = false;
+    let searchTimeout = null;
 
     function initMap() {
-      map = L.map('map', { zoomControl: false, attributionControl: true }).setView(userPos, 15);
+      map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userPos, 15);
 
-      // Darmowa mapa rastrowa OpenStreetMap zgodna z Leaflet
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://tiles.openfreemap.org/styles/bright/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>',
-        tileSize: 256
+        attribution: '&copy; OpenFreeMap &copy; OpenStreetMap'
       }).addTo(map);
 
-      // Widoczna atrybucja mapy, odsunięta nad dolny panel nawigacji
-      const attribution = map.attributionControl;
-      attribution.setPrefix('');
-      const attributionElement = attribution.getContainer();
-      attributionElement.style.marginBottom = '105px';
-      attributionElement.style.marginRight = '8px';
-      attributionElement.style.background = 'rgba(255,255,255,0.85)';
-      attributionElement.style.padding = '2px 5px';
+      setTimeout(() => { map.invalidateSize(); }, 200);
 
       const userIcon = L.divIcon({
         className: 'custom-user-icon',
@@ -405,11 +482,68 @@
       }
     }
 
+    const searchInput = document.getElementById('search-input');
+    const searchResults = document.getElementById('search-results');
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      const query = searchInput.value.trim();
+
+      if (query.length < 3) {
+        searchResults.style.display = 'none';
+        return;
+      }
+
+      searchTimeout = setTimeout(() => {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=pl`)
+          .then(res => res.json())
+          .then(data => {
+            searchResults.innerHTML = '';
+            if (data.length === 0) {
+              searchResults.style.display = 'none';
+              return;
+            }
+            data.forEach(item => {
+              const div = document.createElement('div');
+              div.className = 'search-item';
+              div.innerText = item.display_name;
+              div.onclick = () => {
+                const lat = parseFloat(item.lat);
+                const lon = parseFloat(item.lon);
+                searchInput.value = item.display_name.split(',')[0];
+                searchResults.style.display = 'none';
+                setDestination(lat, lon);
+              };
+              searchResults.appendChild(div);
+            });
+            searchResults.style.display = 'block';
+          })
+          .catch(() => { searchResults.style.display = 'none'; });
+      }, 350);
+    });
+
+    document.getElementById('search-btn').onclick = () => {
+      const query = searchInput.value.trim();
+      if (query.length >= 3) {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=pl`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.length > 0) {
+              setDestination(parseFloat(data[0].lat), parseFloat(data[0].lon));
+              searchResults.style.display = 'none';
+            }
+          });
+      }
+    };
+
     async function setDestination(lat, lng) {
-      destination = [lat, lng];
       document.getElementById('status-text').innerText = "Przeliczam trasę (OSRM)...";
       
-      const url = `https://router.project-osrm.org/route/v1/driving/${userPos[1]},${userPos[0]};${lng},${lat}?overview=full&geometries=geojson&steps=true`;
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker([lat, lng]).addTo(map);
+
+      // Dodano &languages=pl, żeby OSRM zwracał instrukcje po polsku
+      const url = `https://router.project-osrm.org/route/v1/driving/${userPos[1]},${userPos[0]};${lng},${lat}?overview=full&geometries=geojson&steps=true&languages=pl`;
 
       try {
         const res = await fetch(url);
@@ -439,16 +573,21 @@
       map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
     }
 
-    function getManeuverSymbol(modifier, type) {
+    // Inteligentna funkcja mapująca tekst i modyfikator na poprawną ikonę
+    function getManeuverSymbol(instruction, modifier, type) {
+      const text = (instruction || '').toLowerCase();
+      if (text.includes('prosto') || text.includes('kontynuuj')) return '↑';
+      if (text.includes('lewo')) return '↩';
+      if (text.includes('prawo')) return '↪';
+      if (text.includes('zawróć')) return '🔄';
+      if (type === 'arrive') return '🏁';
+
       if (!modifier) return '↑';
       if (modifier.includes('right')) return '↪';
       if (modifier.includes('left')) return '↩';
       if (modifier.includes('straight')) return '↑';
       if (modifier.includes('slight right')) return '↗';
       if (modifier.includes('slight left')) return '↖';
-      if (modifier.includes('sharp right')) return '↻';
-      if (modifier.includes('sharp left')) return '↺';
-      if (type === 'arrive') return '🏁';
       return '↑';
     }
 
@@ -471,9 +610,10 @@
 
       if (activeRouteSteps.length > 0) {
         const step = activeRouteSteps[0];
+        const instr = step.maneuver.instruction || "Jedź prosto";
         document.getElementById('maneuver-dist').innerText = `${Math.round(step.distance)} m`;
-        document.getElementById('maneuver-text').innerText = step.maneuver.instruction || "Jedź prosto";
-        document.getElementById('maneuver-icon').innerText = getManeuverSymbol(step.maneuver.modifier, step.maneuver.type);
+        document.getElementById('maneuver-text').innerText = instr;
+        document.getElementById('maneuver-icon').innerText = getManeuverSymbol(instr, step.maneuver.modifier, step.maneuver.type);
       }
 
       renderStepsList();
@@ -482,16 +622,18 @@
     function stopNavigation() {
       isNavigating = false;
       if (routePolyline) map.removeLayer(routePolyline);
+      if (destMarker) map.removeLayer(destMarker);
 
       document.getElementById('top-bar').classList.add('hidden');
       document.getElementById('btn-stop').classList.add('hidden');
       document.getElementById('btn-toggle-steps').classList.add('hidden');
       document.getElementById('steps-list').style.display = 'none';
+      searchInput.value = '';
 
-      document.getElementById('status-text').innerText = "Tryb wolnej jazdy — kliknij mapę";
+      document.getElementById('status-text').innerText = "Wpisz cel lub kliknij mapę";
       document.getElementById('eta-time').innerText = "--:--";
       document.getElementById('eta-duration').innerText = "-- min";
-      document.getElementById('eta-dist').innerText = "Wyznacz trasę kliknięciem";
+      document.getElementById('eta-dist').innerText = "Wyznacz trasę wpisując cel";
 
       map.setView(userPos, 15);
     }
