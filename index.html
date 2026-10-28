@@ -356,13 +356,23 @@
     let isNavigating = false;
 
     function initMap() {
-      map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userPos, 15);
+      map = L.map('map', { zoomControl: false, attributionControl: true }).setView(userPos, 15);
 
-      // OpenFreeMap (darmowe, bez blokad CORS i blokad GitHub Pages)
-      L.tileLayer('https://tiles.openfreemap.org/styles/liberty/{z}/{x}/{y}.png', {
+      // Darmowa mapa rastrowa OpenStreetMap zgodna z Leaflet
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; OpenFreeMap &copy; OpenStreetMap contributors'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>',
+        tileSize: 256
       }).addTo(map);
+
+      // Widoczna atrybucja mapy, odsunięta nad dolny panel nawigacji
+      const attribution = map.attributionControl;
+      attribution.setPrefix('');
+      const attributionElement = attribution.getContainer();
+      attributionElement.style.marginBottom = '105px';
+      attributionElement.style.marginRight = '8px';
+      attributionElement.style.background = 'rgba(255,255,255,0.85)';
+      attributionElement.style.padding = '2px 5px';
 
       const userIcon = L.divIcon({
         className: 'custom-user-icon',
